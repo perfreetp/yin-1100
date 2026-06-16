@@ -28,7 +28,7 @@ export function formatMoney(amount: number): string {
 export function getDaysDiff(start: string | Date, end: string | Date): number {
   const s = typeof start === 'string' ? parseISO(start) : start;
   const e = typeof end === 'string' ? parseISO(end) : end;
-  return differenceInDays(e, s) + 1;
+  return Math.max(0, differenceInDays(e, s));
 }
 
 export function getDaysFromNow(date: string | Date): number {

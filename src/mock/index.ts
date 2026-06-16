@@ -319,6 +319,8 @@ export const mockReimbursements: Reimbursement[] = [
     actualDate: '',
     status: '审核中',
     notes: '已提交材料，等待审核',
+    receiptIds: ['receipt-1', 'receipt-4'],
+    materialIds: ['mat-1', 'mat-6', 'mat-7', 'mat-8'],
   },
 ];
 

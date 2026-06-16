@@ -60,7 +60,7 @@ const ROLE_LABELS: Record<DutyRole, string> = {
 const TASK_STATUS: TaskStatus[] = ['待分配', '进行中', '已完成', '已取消'];
 
 export default function FamilyPage() {
-  const { members, tasks, dutyRoster, stressNotes, importantDates, addMember, updateMember, deleteMember, addTask, updateTask, deleteTask, toggleTask, addStressNote, deleteStressNote, addImportantDate, deleteImportantDate, getStats } = useFamilyStore();
+  const { members, tasks, dutyRoster, stressNotes, importantDates, addMember, updateMember, deleteMember, addTask, updateTask, deleteTask, toggleTask, addStressNote, deleteStressNote, addImportantDate, deleteImportantDate, getStats, addDuty, updateDuty, deleteDuty } = useFamilyStore();
   const { treatmentDates } = useLeaveStore();
   
   const [currentWeek, setCurrentWeek] = useState(new Date());
@@ -68,8 +68,17 @@ export default function FamilyPage() {
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [stressModalOpen, setStressModalOpen] = useState(false);
   const [dateModalOpen, setDateModalOpen] = useState(false);
+  const [dutyModalOpen, setDutyModalOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<string | null>(null);
+  const [editingDuty, setEditingDuty] = useState<string | null>(null);
+  
+  const [dutyForm, setDutyForm] = useState({
+    memberId: '',
+    date: new Date().toISOString().split('T')[0],
+    role: '陪同就诊' as DutyRole,
+    notes: '',
+  });
   
   const [memberForm, setMemberForm] = useState({
     name: '',
@@ -246,6 +255,46 @@ export default function FamilyPage() {
     });
   };
 
+  const handleOpenDutyModal = (duty?: typeof dutyRoster[0], dateStr?: string, memberId?: string) => {
+    if (duty) {
+      setEditingDuty(duty.id);
+      setDutyForm({
+        memberId: duty.memberId,
+        date: duty.date,
+        role: duty.role,
+        notes: duty.notes || '',
+      });
+    } else {
+      setEditingDuty(null);
+      setDutyForm({
+        memberId: memberId || (members.length > 0 ? members[0].id : ''),
+        date: dateStr || new Date().toISOString().split('T')[0],
+        role: '陪同就诊',
+        notes: '',
+      });
+    }
+    setDutyModalOpen(true);
+  };
+
+  const handleSubmitDuty = () => {
+    if (!dutyForm.memberId || !dutyForm.date) return;
+    
+    if (editingDuty) {
+      updateDuty(editingDuty, dutyForm);
+    } else {
+      addDuty(dutyForm);
+    }
+    
+    setDutyModalOpen(false);
+    setEditingDuty(null);
+    setDutyForm({
+      memberId: members.length > 0 ? members[0].id : '',
+      date: new Date().toISOString().split('T')[0],
+      role: '陪同就诊',
+      notes: '',
+    });
+  };
+
   const prevWeek = () => {
     setCurrentWeek(new Date(currentWeek.getTime() - 7 * 24 * 60 * 60 * 1000));
   };
@@ -357,17 +406,36 @@ export default function FamilyPage() {
                           </div>
                         </td>
                         {weekDays.map((date, dayIdx) => {
-                          const duty = getDutyForDate(member.id, date.toISOString().split('T')[0]);
+                          const dateStr = date.toISOString().split('T')[0];
+                          const duty = getDutyForDate(member.id, dateStr);
                           const isToday = isSameDate(date, new Date());
                           return (
                             <td 
                               key={dayIdx} 
-                              className={`p-2 text-center ${isToday ? 'bg-primary-50/50' : ''}`}
+                              className={`p-2 text-center ${isToday ? 'bg-primary-50/50' : ''} group`}
+                              onClick={() => !duty && handleOpenDutyModal(undefined, dateStr, member.id)}
                             >
-                              {duty && (
-                                <div className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getMemberColor(memberIdx)} text-white`}>
+                              {duty ? (
+                                <div 
+                                  className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getMemberColor(memberIdx)} text-white relative group/duty`}
+                                  onClick={(e) => { e.stopPropagation(); handleOpenDutyModal(duty); }}
+                                >
                                   {ROLE_LABELS[duty.role]}
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); deleteDuty(duty.id); }}
+                                    className="absolute -top-1 -right-1 w-4 h-4 bg-danger-500 text-white rounded-full opacity-0 group-hover/duty:opacity-100 transition-opacity flex items-center justify-center text-[10px] hover:bg-danger-600"
+                                    title="删除"
+                                  >
+                                    ×
+                                  </button>
                                 </div>
+                              ) : (
+                                <button 
+                                  className="w-6 h-6 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-warmGray-100 text-warmGray-400 hover:text-primary-500 flex items-center justify-center"
+                                  title="添加轮值"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                </button>
                               )}
                             </td>
                           );
@@ -874,6 +942,57 @@ export default function FamilyPage() {
             />
             <span className="text-warmGray-700">标记为重要日期</span>
           </label>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={dutyModalOpen}
+        onClose={() => setDutyModalOpen(false)}
+        title={editingDuty ? '编辑轮值' : '添加轮值'}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDutyModalOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={handleSubmitDuty} disabled={!dutyForm.memberId || !dutyForm.date}>
+              {editingDuty ? '保存修改' : '添加轮值'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Select
+            label="家庭成员"
+            value={dutyForm.memberId}
+            onChange={(e) => setDutyForm({ ...dutyForm, memberId: e.target.value })}
+            options={members.map(m => ({ value: m.id, label: `${m.avatar} ${m.name}` }))}
+          />
+          <Input
+            label="日期"
+            type="date"
+            value={dutyForm.date}
+            onChange={(e) => setDutyForm({ ...dutyForm, date: e.target.value })}
+          />
+          <Select
+            label="值班角色"
+            value={dutyForm.role}
+            onChange={(e) => setDutyForm({ ...dutyForm, role: e.target.value as DutyRole })}
+            options={[
+              { value: '主要陪护', label: '主要陪护' },
+              { value: '陪同就诊', label: '陪同就诊' },
+              { value: '后勤支持', label: '后勤支持' },
+              { value: '心理支持', label: '心理支持' },
+              { value: '工作对接', label: '工作对接' },
+              { value: '其他', label: '其他' },
+            ]}
+          />
+          <TextArea
+            label="备注"
+            value={dutyForm.notes}
+            onChange={(e) => setDutyForm({ ...dutyForm, notes: e.target.value })}
+            placeholder="如：上午陪同，下午需要返回公司..."
+            rows={2}
+          />
         </div>
       </Modal>
     </div>

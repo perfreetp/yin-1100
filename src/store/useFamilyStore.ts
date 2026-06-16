@@ -220,8 +220,9 @@ export const useFamilyStore = create<FamilyState>()(
 
       getStats: () => {
         const tasks = get().tasks;
-        const total = tasks.length;
-        const completed = tasks.filter((t) => t.status === '已完成').length;
+        const activeTasks = tasks.filter((t) => t.status !== '已取消');
+        const total = activeTasks.length;
+        const completed = activeTasks.filter((t) => t.status === '已完成').length;
         const pending = total - completed;
         const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
         

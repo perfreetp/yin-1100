@@ -23,6 +23,8 @@ export interface Reimbursement {
   actualDate?: string;
   status: ReimbursementStatus;
   notes?: string;
+  receiptIds: string[];
+  materialIds: string[];
 }
 
 export interface MaterialItem {

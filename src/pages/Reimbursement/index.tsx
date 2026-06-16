@@ -2,7 +2,8 @@ import { useState, useMemo } from 'react';
 import { 
   Plus, FileText, Receipt, Upload, CheckCircle, Clock, 
   Edit2, Trash2, CheckSquare, Square, Download,
-  Stethoscope, Pill, Scissors, Microscope, MoreHorizontal
+  Stethoscope, Pill, Scissors, Microscope, MoreHorizontal,
+  Package, X, ChevronDown, ChevronUp, AlertTriangle
 } from 'lucide-react';
 import { useReimbursementStore } from '@/store/useReimbursementStore';
 import { formatMoney, formatDisplayDate } from '@/utils/date';
@@ -15,6 +16,9 @@ import Badge from '@/components/ui/Badge';
 import ProgressBar from '@/components/ui/ProgressBar';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
+
+const PAGE_TABS = ['票据管理', '报销包整理'] as const;
+type PageTab = typeof PAGE_TABS[number];
 
 const CATEGORY_ICONS: Record<ReceiptCategory, React.ReactNode> = {
   '检查费': <Stethoscope className="w-4 h-4" />,
@@ -45,9 +49,13 @@ const STATUS_COLORS: Record<ReimbursementStatus, 'success' | 'warning' | 'accent
 const RECEIPT_CATEGORIES: ReceiptCategory[] = ['检查费', '药品费', '手术费', '化验费', '治疗费', '其他'];
 
 export default function ReimbursementPage() {
-  const { receipts, reimbursements, materials, addReceipt, updateReceipt, deleteReceipt, addReimbursement, updateReimbursement, deleteReimbursement, toggleMaterial, getStats } = useReimbursementStore();
+  const { receipts, reimbursements, materials, addReceipt, updateReceipt, deleteReceipt, addReimbursement, updateReimbursement, deleteReimbursement, toggleMaterial, getStats, addReceiptToReimbursement, removeReceiptFromReimbursement, addMaterialToReimbursement, removeMaterialFromReimbursement, getReimbursementDetail } = useReimbursementStore();
   
+  const [pageTab, setPageTab] = useState<PageTab>('票据管理');
   const [activeTab, setActiveTab] = useState<ReceiptCategory | 'all'>('all');
+  const [expandedReimbursementId, setExpandedReimbursementId] = useState<string | null>(null);
+  const [packageModalOpen, setPackageModalOpen] = useState(false);
+  const [selectedReimbursementId, setSelectedReimbursementId] = useState<string | null>(null);
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [reimbursementModalOpen, setReimbursementModalOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<string | null>(null);
@@ -193,6 +201,11 @@ export default function ReimbursementPage() {
     return (stats.reimbursedAmount / total) * 100;
   }, [stats]);
 
+  const handleOpenPackageModal = (reimbursementId: string) => {
+    setSelectedReimbursementId(reimbursementId);
+    setPackageModalOpen(true);
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -202,13 +215,34 @@ export default function ReimbursementPage() {
             <FileText className="w-4 h-4" />
             报销申请
           </Button>
-          <Button onClick={() => handleOpenReceiptModal()}>
-            <Plus className="w-4 h-4" />
-            添加票据
-          </Button>
+          {pageTab === '票据管理' && (
+            <Button onClick={() => handleOpenReceiptModal()}>
+              <Plus className="w-4 h-4" />
+              添加票据
+            </Button>
+          )}
         </div>
       </div>
 
+      <div className="flex gap-2 border-b border-warmGray-200">
+        {PAGE_TABS.map(tab => (
+          <button
+            key={tab}
+            onClick={() => setPageTab(tab)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              pageTab === tab
+                ? 'border-primary-500 text-primary-600'
+                : 'border-transparent text-warmGray-500 hover:text-warmGray-700'
+            }`}
+          >
+            {tab === '报销包整理' && <Package className="w-4 h-4 inline mr-1.5" />}
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {pageTab === '票据管理' && (
+        <>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="票据总额"

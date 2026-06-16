@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { 
   Plus, Car, Plane, Train, Hotel, MapPin, Calendar, 
   Edit2, Trash2, Bell, AlertCircle, CheckCircle, Clock,
-  DollarSign
+  DollarSign, Wand2
 } from 'lucide-react';
 import { useTravelStore } from '@/store/useTravelStore';
 import { useLeaveStore } from '@/store/useLeaveStore';
@@ -55,8 +55,19 @@ export default function TravelPage() {
   
   const [travelModalOpen, setTravelModalOpen] = useState(false);
   const [hotelModalOpen, setHotelModalOpen] = useState(false);
+  const [generateModalOpen, setGenerateModalOpen] = useState(false);
   const [editingTravel, setEditingTravel] = useState<string | null>(null);
   const [editingHotel, setEditingHotel] = useState<string | null>(null);
+  const [selectedTreatmentDate, setSelectedTreatmentDate] = useState<typeof treatmentDates[0] | null>(null);
+  
+  const [generateForm, setGenerateForm] = useState({
+    departure: '北京',
+    destination: '天津',
+    daysBefore: 1,
+    nights: 3,
+    travelType: '火车' as TravelType,
+    accommodationType: '酒店' as AccommodationType,
+  });
   
   const [travelForm, setTravelForm] = useState({
     type: '火车' as TravelType,
@@ -275,6 +286,81 @@ export default function TravelPage() {
     setHotelForm(newForm);
   };
 
+  const handleOpenGenerateModal = (treatmentDate: typeof treatmentDates[0]) => {
+    setSelectedTreatmentDate(treatmentDate);
+    setGenerateForm({
+      departure: '北京',
+      destination: '天津',
+      daysBefore: 1,
+      nights: 3,
+      travelType: '火车',
+      accommodationType: '酒店',
+    });
+    setGenerateModalOpen(true);
+  };
+
+  const addDays = (dateStr: string, days: number): string => {
+    const date = new Date(dateStr);
+    date.setDate(date.getDate() + days);
+    return date.toISOString().split('T')[0];
+  };
+
+  const handleGeneratePlan = () => {
+    if (!selectedTreatmentDate) return;
+
+    const treatmentDate = selectedTreatmentDate.date;
+    const checkInDate = addDays(treatmentDate, -generateForm.daysBefore);
+    const checkOutDate = addDays(checkInDate, generateForm.nights);
+
+    const departureTravel = {
+      type: generateForm.travelType,
+      departure: generateForm.departure,
+      destination: generateForm.destination,
+      departureDate: checkInDate,
+      departureTime: '08:00',
+      arrivalDate: checkInDate,
+      arrivalTime: '11:00',
+      flightNumber: '',
+      cost: 0,
+      status: '待预订' as const,
+      notes: `${selectedTreatmentDate.type} - 去程`,
+    };
+
+    const returnTravel = {
+      type: generateForm.travelType,
+      departure: generateForm.destination,
+      destination: generateForm.departure,
+      departureDate: checkOutDate,
+      departureTime: '14:00',
+      arrivalDate: checkOutDate,
+      arrivalTime: '17:00',
+      flightNumber: '',
+      cost: 0,
+      status: '待预订' as const,
+      notes: `${selectedTreatmentDate.type} - 返程`,
+    };
+
+    const accommodation = {
+      name: `${generateForm.destination}医院附近${generateForm.accommodationType}`,
+      type: generateForm.accommodationType,
+      address: '',
+      checkInDate,
+      checkOutDate,
+      nightlyRate: 0,
+      totalCost: 0,
+      confirmationNumber: '',
+      status: '待预订' as const,
+      notes: `${selectedTreatmentDate.type} - ${generateForm.nights}晚住宿`,
+    };
+
+    addTravel(departureTravel);
+    addTravel(returnTravel);
+    addAccommodation(accommodation);
+
+    setGenerateModalOpen(false);
+    setSelectedTreatmentDate(null);
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -330,9 +416,16 @@ export default function TravelPage() {
               <h3 className="font-medium text-warmGray-800 mb-2">近期治疗日期</h3>
               <div className="flex flex-wrap gap-2">
                 {relatedTreatmentDates.map(t => (
-                  <div key={t.id} className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg">
+                  <div key={t.id} className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg group">
                     <span className="font-medium text-primary-700">{formatDisplayDate(t.date)}</span>
                     <span className="text-sm text-warmGray-600">{t.type}</span>
+                    <button
+                      onClick={() => handleOpenGenerateModal(t)}
+                      className="ml-1 p-1.5 rounded-lg bg-primary-100 text-primary-600 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-primary-200"
+                      title="快速生成行程"
+                    >
+                      <Wand2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -729,6 +822,108 @@ export default function TravelPage() {
             placeholder="如：早餐、停车、延迟退房等..."
             rows={2}
           />
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={generateModalOpen}
+        onClose={() => setGenerateModalOpen(false)}
+        title={`生成${selectedTreatmentDate?.type || ''}行程计划`}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setGenerateModalOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={handleGeneratePlan}>
+              <Wand2 className="w-4 h-4" />
+              生成行程草稿
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          {selectedTreatmentDate && (
+            <div className="p-3 bg-primary-50 rounded-lg mb-4">
+              <p className="text-sm text-primary-700">
+                <strong>{selectedTreatmentDate.type}</strong> - {formatDisplayDate(selectedTreatmentDate.date)}
+              </p>
+              {selectedTreatmentDate.description && (
+                <p className="text-xs text-primary-600 mt-1">{selectedTreatmentDate.description}</p>
+              )}
+            </div>
+          )}
+          
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="出发城市"
+              value={generateForm.departure}
+              onChange={(e) => setGenerateForm({ ...generateForm, departure: e.target.value })}
+              placeholder="如：北京"
+            />
+            <Input
+              label="目的城市"
+              value={generateForm.destination}
+              onChange={(e) => setGenerateForm({ ...generateForm, destination: e.target.value })}
+              placeholder="如：天津"
+            />
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="提前几天到达"
+              type="number"
+              min="0"
+              max="7"
+              value={generateForm.daysBefore}
+              onChange={(e) => setGenerateForm({ ...generateForm, daysBefore: parseInt(e.target.value) || 0 })}
+              placeholder="1"
+            />
+            <Input
+              label="住宿晚数"
+              type="number"
+              min="1"
+              max="30"
+              value={generateForm.nights}
+              onChange={(e) => setGenerateForm({ ...generateForm, nights: parseInt(e.target.value) || 1 })}
+              placeholder="3"
+            />
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <Select
+              label="交通方式"
+              value={generateForm.travelType}
+              onChange={(e) => setGenerateForm({ ...generateForm, travelType: e.target.value as TravelType })}
+              options={[
+                { value: '飞机', label: '飞机' },
+                { value: '火车', label: '火车' },
+                { value: '汽车', label: '汽车' },
+                { value: '打车', label: '打车' },
+                { value: '其他', label: '其他' },
+              ]}
+            />
+            <Select
+              label="住宿类型"
+              value={generateForm.accommodationType}
+              onChange={(e) => setGenerateForm({ ...generateForm, accommodationType: e.target.value as AccommodationType })}
+              options={[
+                { value: '酒店', label: '酒店' },
+                { value: '民宿', label: '民宿' },
+                { value: '公寓', label: '公寓' },
+                { value: '亲友家', label: '亲友家' },
+                { value: '其他', label: '其他' },
+              ]}
+            />
+          </div>
+          
+          <div className="p-4 bg-warmGray-50 rounded-lg">
+            <h4 className="font-medium text-warmGray-700 mb-2">行程预览</h4>
+            <div className="space-y-2 text-sm text-warmGray-600">
+              <p>🚄 去程：{generateForm.departure} → {generateForm.destination}，{formatDisplayDate(addDays(selectedTreatmentDate?.date || new Date().toISOString().split('T')[0], -generateForm.daysBefore))}</p>
+              <p>🏨 住宿：{generateForm.nights}晚，{formatDisplayDate(addDays(selectedTreatmentDate?.date || new Date().toISOString().split('T')[0], -generateForm.daysBefore))} - {formatDisplayDate(addDays(addDays(selectedTreatmentDate?.date || new Date().toISOString().split('T')[0], -generateForm.daysBefore), generateForm.nights))}</p>
+              <p>🚄 返程：{generateForm.destination} → {generateForm.departure}，{formatDisplayDate(addDays(addDays(selectedTreatmentDate?.date || new Date().toISOString().split('T')[0], -generateForm.daysBefore), generateForm.nights))}</p>
+            </div>
+          </div>
         </div>
       </Modal>
     </div>
