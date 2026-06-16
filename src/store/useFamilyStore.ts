@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { FamilyMember, Task, DutyRoster, StressNote, ImportantDate } from '@/types/family';
+import type { FamilyMember, Task, DutyRoster, StressNote, ImportantDate, TaskStatus, FamilyStats } from '@/types/family';
 import { mockFamilyMembers, mockTasks, mockDutyRoster, mockStressNotes, mockImportantDates } from '@/mock';
 import { generateId, getDaysFromNow, isSameDate, getWeekRange } from '@/utils/date';
 
@@ -18,8 +18,9 @@ interface FamilyState {
   addTask: (task: Omit<Task, 'id'>) => void;
   updateTask: (id: string, data: Partial<Task>) => void;
   deleteTask: (id: string) => void;
+  toggleTask: (id: string) => void;
   getTasksByMember: (memberId: string) => Task[];
-  getTasksByStatus: () => Record<Task['status'], Task[]>;
+  getTasksByStatus: () => Record<TaskStatus, Task[]>;
   
   addDuty: (duty: Omit<DutyRoster, 'id'>) => void;
   updateDuty: (id: string, data: Partial<DutyRoster>) => void;
@@ -36,13 +37,7 @@ interface FamilyState {
   deleteImportantDate: (id: string) => void;
   getUpcomingImportantDates: (days?: number) => ImportantDate[];
   
-  getStats: () => {
-    totalMembers: number;
-    pendingTasks: number;
-    completedTasks: number;
-    thisWeekDuties: DutyRoster[];
-    upcomingImportantDates: ImportantDate[];
-  };
+  getStats: () => FamilyStats;
   
   resetToMock: () => void;
 }
@@ -106,11 +101,21 @@ export const useFamilyStore = create<FamilyState>()(
         }));
       },
 
-      getTasksByMember: (memberId) => get().tasks.filter((t) => t.memberId === memberId),
+      toggleTask: (id) => {
+        set((state) => ({
+          tasks: state.tasks.map((t) => {
+            if (t.id !== id) return t;
+            const newStatus: TaskStatus = t.status === '已完成' ? '待分配' : '已完成';
+            return { ...t, status: newStatus };
+          }),
+        }));
+      },
+
+      getTasksByMember: (memberId) => get().tasks.filter((t) => t.assigneeId === memberId),
 
       getTasksByStatus: () => {
-        const statuses: Task['status'][] = ['待办', '进行中', '已完成'];
-        const grouped = {} as Record<Task['status'], Task[]>;
+        const statuses: TaskStatus[] = ['待分配', '进行中', '已完成', '已取消'];
+        const grouped = {} as Record<TaskStatus, Task[]>;
         statuses.forEach((s) => {
           grouped[s] = get().tasks.filter((t) => t.status === s);
         });
@@ -215,12 +220,17 @@ export const useFamilyStore = create<FamilyState>()(
 
       getStats: () => {
         const tasks = get().tasks;
+        const total = tasks.length;
+        const completed = tasks.filter((t) => t.status === '已完成').length;
+        const pending = total - completed;
+        const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+        
         return {
           totalMembers: get().members.length,
-          pendingTasks: tasks.filter((t) => t.status !== '已完成').length,
-          completedTasks: tasks.filter((t) => t.status === '已完成').length,
-          thisWeekDuties: get().getThisWeekDuties(),
-          upcomingImportantDates: get().getUpcomingImportantDates(14),
+          pendingTasks: pending,
+          completedTasks: completed,
+          completionRate,
+          upcomingImportantDates: get().getUpcomingImportantDates(14).length,
         };
       },
 

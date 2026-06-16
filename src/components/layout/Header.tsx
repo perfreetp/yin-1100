@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Bell, Search, Download, Upload } from 'lucide-react';
 import { formatDate } from '@/utils/date';
 import Button from '@/components/ui/Button';
@@ -5,7 +6,14 @@ import { useFamilyStore } from '@/store/useFamilyStore';
 import { exportData, importData } from '@/utils/storage';
 
 export default function Header() {
-  const upcomingDates = useFamilyStore(state => state.getUpcomingImportantDates(7));
+  const importantDates = useFamilyStore(state => state.importantDates);
+  const getUpcomingImportantDates = useFamilyStore(state => state.getUpcomingImportantDates);
+  
+  const [upcomingDates, setUpcomingDates] = useState(() => getUpcomingImportantDates(7));
+  
+  useEffect(() => {
+    setUpcomingDates(getUpcomingImportantDates(7));
+  }, [importantDates, getUpcomingImportantDates]);
   
   const handleExport = () => {
     const data = exportData();

@@ -381,7 +381,6 @@ export default function ReimbursementPage() {
                   <ProgressBar 
                     progress={stats.totalAmount > 0 ? (stat.total / stats.totalAmount) * 100 : 0} 
                     height="sm"
-                    color="primary"
                   />
                   <p className="text-xs text-warmGray-400 mt-1">{stat.count} 张票据</p>
                 </div>
