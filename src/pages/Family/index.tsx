@@ -145,8 +145,8 @@ export default function FamilyPage() {
 
   const getMemberColor = (index: number) => MEMBER_COLORS[index % MEMBER_COLORS.length];
 
-  const getDutyForDate = (memberId: string, date: string) => {
-    return dutyRoster.find(d => d.memberId === memberId && d.date === date);
+  const getDutiesForDate = (memberId: string, date: string) => {
+    return dutyRoster.filter(d => d.memberId === memberId && d.date === date);
   };
 
   const handleOpenMemberModal = (member?: typeof members[0]) => {
@@ -407,36 +407,38 @@ export default function FamilyPage() {
                         </td>
                         {weekDays.map((date, dayIdx) => {
                           const dateStr = date.toISOString().split('T')[0];
-                          const duty = getDutyForDate(member.id, dateStr);
+                          const duties = getDutiesForDate(member.id, dateStr);
                           const isToday = isSameDate(date, new Date());
                           return (
                             <td 
                               key={dayIdx} 
-                              className={`p-2 text-center ${isToday ? 'bg-primary-50/50' : ''} group`}
-                              onClick={() => !duty && handleOpenDutyModal(undefined, dateStr, member.id)}
+                              className={`p-2 text-center ${isToday ? 'bg-primary-50/50' : ''} group align-top`}
                             >
-                              {duty ? (
-                                <div 
-                                  className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getMemberColor(memberIdx)} text-white relative group/duty`}
-                                  onClick={(e) => { e.stopPropagation(); handleOpenDutyModal(duty); }}
-                                >
-                                  {ROLE_LABELS[duty.role]}
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); deleteDuty(duty.id); }}
-                                    className="absolute -top-1 -right-1 w-4 h-4 bg-danger-500 text-white rounded-full opacity-0 group-hover/duty:opacity-100 transition-opacity flex items-center justify-center text-[10px] hover:bg-danger-600"
-                                    title="删除"
+                              <div className="flex flex-col gap-1 items-center">
+                                {duties.map(duty => (
+                                  <div 
+                                    key={duty.id}
+                                    className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${getMemberColor(memberIdx)} text-white relative group/duty w-full max-w-[80px]`}
+                                    onClick={(e) => { e.stopPropagation(); handleOpenDutyModal(duty); }}
                                   >
-                                    ×
-                                  </button>
-                                </div>
-                              ) : (
+                                    {ROLE_LABELS[duty.role]}
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); deleteDuty(duty.id); }}
+                                      className="absolute -top-1 -right-1 w-4 h-4 bg-danger-500 text-white rounded-full opacity-0 group-hover/duty:opacity-100 transition-opacity flex items-center justify-center text-[10px] hover:bg-danger-600"
+                                      title="删除"
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                ))}
                                 <button 
-                                  className="w-6 h-6 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-warmGray-100 text-warmGray-400 hover:text-primary-500 flex items-center justify-center"
+                                  className="w-6 h-6 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-warmGray-100 text-warmGray-400 hover:text-primary-500 flex items-center justify-center flex-shrink-0"
                                   title="添加轮值"
+                                  onClick={() => handleOpenDutyModal(undefined, dateStr, member.id)}
                                 >
                                   <Plus className="w-3.5 h-3.5" />
                                 </button>
-                              )}
+                              </div>
                             </td>
                           );
                         })}

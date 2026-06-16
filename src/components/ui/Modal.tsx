@@ -9,9 +9,16 @@ interface ModalProps {
   children: ReactNode;
   footer?: ReactNode;
   className?: string;
+  size?: 'sm' | 'md' | 'lg';
 }
 
-export default function Modal({ isOpen, onClose, title, children, footer, className }: ModalProps) {
+const SIZE_CLASSES: Record<string, string> = {
+  sm: 'max-w-sm',
+  md: 'max-w-lg',
+  lg: 'max-w-2xl',
+};
+
+export default function Modal({ isOpen, onClose, title, children, footer, className, size = 'md' }: ModalProps) {
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
