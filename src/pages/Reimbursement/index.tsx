@@ -54,7 +54,8 @@ export default function ReimbursementPage() {
     receipts, reimbursements, materials,
     addReceipt, updateReceipt, deleteReceipt,
     addReimbursement, updateReimbursement, deleteReimbursement,
-    toggleMaterial, getStats,
+    addMaterial, updateMaterial, toggleMaterial, deleteMaterial,
+    getStats,
     addReceiptToReimbursement, removeReceiptFromReimbursement,
     addMaterialToReimbursement, removeMaterialFromReimbursement,
   } = useReimbursementStore();
@@ -66,8 +67,10 @@ export default function ReimbursementPage() {
   const [selectedReimbursementId, setSelectedReimbursementId] = useState<string | null>(null);
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [reimbursementModalOpen, setReimbursementModalOpen] = useState(false);
+  const [materialModalOpen, setMaterialModalOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<string | null>(null);
   const [editingReimbursement, setEditingReimbursement] = useState<string | null>(null);
+  const [editingMaterial, setEditingMaterial] = useState<string | null>(null);
   
   const [receiptForm, setReceiptForm] = useState({
     category: '检查费' as ReceiptCategory,
@@ -88,6 +91,14 @@ export default function ReimbursementPage() {
     actualDate: '',
     status: '未提交' as ReimbursementStatus,
     notes: '',
+  });
+  
+  const [materialForm, setMaterialForm] = useState({
+    name: '',
+    category: '医院材料' as MaterialCategory,
+    description: '',
+    required: true,
+    isCompleted: false,
   });
 
   const stats = useMemo(() => getStats(), [receipts, reimbursements]);
@@ -121,6 +132,10 @@ export default function ReimbursementPage() {
     if (total === 0) return 0;
     return (stats.reimbursedAmount / total) * 100;
   }, [stats]);
+
+  const getReceiptReimbursement = (receiptId: string) => {
+    return reimbursements.find(r => r.receiptIds.includes(receiptId));
+  };
 
   const getReimbursementDetail = (reimbursementId: string) => {
     const reimbursement = reimbursements.find(r => r.id === reimbursementId);
@@ -236,6 +251,125 @@ export default function ReimbursementPage() {
     }
     
     setReimbursementModalOpen(false);
+  };
+
+  const handleOpenMaterialModal = (material?: MaterialItem) => {
+    if (material) {
+      setEditingMaterial(material.id);
+      setMaterialForm({
+        name: material.name,
+        category: material.category,
+        description: material.description || '',
+        required: material.required,
+        isCompleted: material.isCompleted,
+      });
+    } else {
+      setEditingMaterial(null);
+      setMaterialForm({
+        name: '',
+        category: '医院材料',
+        description: '',
+        required: true,
+        isCompleted: false,
+      });
+    }
+    setMaterialModalOpen(true);
+  };
+
+  const handleSubmitMaterial = () => {
+    if (!materialForm.name.trim()) return;
+    
+    if (editingMaterial) {
+      updateMaterial(editingMaterial, materialForm);
+    } else {
+      addMaterial(materialForm);
+    }
+    
+    setMaterialModalOpen(false);
+  };
+
+  const generateSummaryText = (reimbursementId: string) => {
+    const detail = getReimbursementDetail(reimbursementId);
+    if (!detail) return '';
+    
+    const { reimbursement, includedReceipts, includedMaterials, missingRequired, totalIncludedAmount } = detail;
+    
+    let text = `📋 ${reimbursement.title} - 报销整理摘要\n`;
+    text += `${'='.repeat(40)}\n\n`;
+    text += `📅 提交日期：${formatDisplayDate(reimbursement.submitDate)}\n`;
+    text += `📊 申请状态：${reimbursement.status}\n`;
+    text += `💰 申请金额：${formatMoney(reimbursement.amount)}\n`;
+    text += `✅ 已归入票据金额：${formatMoney(totalIncludedAmount)}\n`;
+    text += `📝 预计可报金额：${formatMoney(totalIncludedAmount)}\n\n`;
+    
+    text += `🧾 票据明细 (${includedReceipts.length}张)\n`;
+    text += `${'-'.repeat(30)}\n`;
+    if (includedReceipts.length === 0) {
+      text += `  暂无归入票据\n`;
+    } else {
+      const groupedByCategory = includedReceipts.reduce((acc, r) => {
+        if (!acc[r.category]) acc[r.category] = { count: 0, amount: 0, items: [] };
+        acc[r.category].count++;
+        acc[r.category].amount += r.amount;
+        acc[r.category].items.push(r);
+        return acc;
+      }, {} as Record<string, { count: number; amount: number; items: typeof includedReceipts }>);
+      
+      Object.entries(groupedByCategory).forEach(([category, data]) => {
+        text += `\n  ${category} (${data.count}张，共${formatMoney(data.amount)})\n`;
+        data.items.forEach(r => {
+          text += `    • ${formatDisplayDate(r.date)} ${r.hospital || ''}：${formatMoney(r.amount)}\n`;
+          if (r.description) text += `      ${r.description}\n`;
+        });
+      });
+    }
+    
+    text += `\n📄 材料准备情况\n`;
+    text += `${'-'.repeat(30)}\n`;
+    text += `  已准备：${includedMaterials.length} 份\n`;
+    if (missingRequired.length > 0) {
+      text += `  ❌ 还缺少的必需材料 (${missingRequired.length}份)：\n`;
+      missingRequired.forEach(m => {
+        text += `    • [ ] ${m.name}`;
+        if (m.description) text += ` (${m.description})`;
+        text += `\n`;
+      });
+    } else {
+      text += `  ✅ 所有必需材料已准备齐全！\n`;
+    }
+    
+    if (includedMaterials.length > 0) {
+      text += `\n  ✅ 已归入材料 (${includedMaterials.length}份)：\n`;
+      includedMaterials.forEach(m => {
+        text += `    • [x] ${m.name}`;
+        if (m.required) text += ` *必需`;
+        if (m.description) text += ` (${m.description})`;
+        text += `\n`;
+      });
+    }
+    
+    text += `\n${'='.repeat(40)}\n`;
+    text += `📱 生成时间：${new Date().toLocaleString('zh-CN')}\n`;
+    
+    return text;
+  };
+
+  const handleExportSummary = async (reimbursementId: string) => {
+    const text = generateSummaryText(reimbursementId);
+    if (!text) return;
+    
+    try {
+      await navigator.clipboard.writeText(text);
+      alert('摘要已复制到剪贴板，可以发给家人了！');
+    } catch {
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `报销摘要_${reimbursements.find(r => r.id === reimbursementId)?.title || '报销'}_${new Date().toISOString().split('T')[0]}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
   };
 
   const handleOpenPackageModal = (reimbursementId: string) => {
@@ -375,56 +509,74 @@ export default function ReimbursementPage() {
                   />
                 ) : (
                   <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
-                    {filteredReceipts.map(receipt => (
-                      <div 
-                        key={receipt.id}
-                        className="p-4 bg-warmGray-50 rounded-xl group flex items-start justify-between"
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className={`p-2 rounded-lg ${RECEIPT_COLORS[receipt.category]}`}>
-                            {CATEGORY_ICONS[receipt.category]}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <h4 className="font-medium text-warmGray-800">
-                                {receipt.hospital || '医院票据'}
-                              </h4>
-                              <Badge variant={receipt.isReimbursed ? 'success' : 'warning'}>
-                                {receipt.isReimbursed ? '已报销' : '待报销'}
-                              </Badge>
-                              {!receipt.hasReceipt && (
-                                <Badge variant="danger">无票据</Badge>
+                    {filteredReceipts.map(receipt => {
+                      const relatedReimbursement = getReceiptReimbursement(receipt.id);
+                      return (
+                        <div 
+                          key={receipt.id}
+                          className="p-4 bg-warmGray-50 rounded-xl group flex items-start justify-between"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className={`p-2 rounded-lg ${RECEIPT_COLORS[receipt.category]}`}>
+                              {CATEGORY_ICONS[receipt.category]}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                <h4 className="font-medium text-warmGray-800">
+                                  {receipt.hospital || '医院票据'}
+                                </h4>
+                                <Badge variant={receipt.isReimbursed ? 'success' : 'warning'}>
+                                  {receipt.isReimbursed ? '已报销' : '待报销'}
+                                </Badge>
+                                {!receipt.hasReceipt && (
+                                  <Badge variant="danger">无票据</Badge>
+                                )}
+                                {relatedReimbursement && (
+                                  <Badge variant="primary" size="sm">
+                                    归入：{relatedReimbursement.title}
+                                  </Badge>
+                                )}
+                                {!relatedReimbursement && !receipt.isReimbursed && (
+                                  <Badge variant="default" size="sm">
+                                    待整理
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-sm text-warmGray-600">
+                                {receipt.category} · {formatDisplayDate(receipt.date)}
+                              </p>
+                              {receipt.description && (
+                                <p className="text-xs text-warmGray-500 mt-1">{receipt.description}</p>
+                              )}
+                              {relatedReimbursement && (relatedReimbursement.status === '已提交' || relatedReimbursement.status === '审核中' || relatedReimbursement.status === '已报销') && (
+                                <p className="text-xs text-primary-600 mt-1">
+                                  该申请{relatedReimbursement.status}，票据已锁定
+                                </p>
                               )}
                             </div>
-                            <p className="text-sm text-warmGray-600">
-                              {receipt.category} · {formatDisplayDate(receipt.date)}
-                            </p>
-                            {receipt.description && (
-                              <p className="text-xs text-warmGray-500 mt-1">{receipt.description}</p>
-                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-semibold text-warmGray-800">
+                              {formatMoney(receipt.amount)}
+                            </span>
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                              <button
+                                onClick={() => handleOpenReceiptModal(receipt)}
+                                className="p-1.5 hover:bg-white rounded-lg text-warmGray-500 hover:text-primary-500 transition-colors"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => deleteReceipt(receipt.id)}
+                                className="p-1.5 hover:bg-white rounded-lg text-warmGray-500 hover:text-danger-500 transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono font-semibold text-warmGray-800">
-                            {formatMoney(receipt.amount)}
-                          </span>
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                            <button
-                              onClick={() => handleOpenReceiptModal(receipt)}
-                              className="p-1.5 hover:bg-white rounded-lg text-warmGray-500 hover:text-primary-500 transition-colors"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => deleteReceipt(receipt.id)}
-                              className="p-1.5 hover:bg-white rounded-lg text-warmGray-500 hover:text-danger-500 transition-colors"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
@@ -472,6 +624,9 @@ export default function ReimbursementPage() {
                   <CheckSquare className="w-5 h-5 text-primary-500" />
                   报销材料清单
                 </CardTitle>
+                <Button variant="ghost" size="sm" onClick={() => handleOpenMaterialModal()}>
+                  <Plus className="w-4 h-4" />
+                </Button>
               </CardHeader>
               <CardContent>
                 {MATERIAL_CATEGORIES.map(category => {
@@ -482,9 +637,9 @@ export default function ReimbursementPage() {
                       <h4 className="font-medium text-warmGray-700 mb-2">{category}</h4>
                       <div className="space-y-2">
                         {items.map(item => (
-                          <label 
+                          <div 
                             key={item.id}
-                            className="flex items-start gap-3 p-3 bg-warmGray-50 rounded-lg cursor-pointer hover:bg-warmGray-100 transition-colors"
+                            className="flex items-start gap-3 p-3 bg-warmGray-50 rounded-lg group"
                           >
                             <button
                               onClick={() => toggleMaterial(item.id)}
@@ -496,7 +651,7 @@ export default function ReimbursementPage() {
                                 <Square className="w-5 h-5 text-warmGray-400" />
                               )}
                             </button>
-                            <div className="flex-1">
+                            <div className="flex-1 min-w-0">
                               <span className={item.isCompleted ? 'text-warmGray-400 line-through' : 'text-warmGray-800'}>
                                 {item.name}
                               </span>
@@ -507,7 +662,21 @@ export default function ReimbursementPage() {
                                 <p className="text-xs text-warmGray-500 mt-1">{item.description}</p>
                               )}
                             </div>
-                          </label>
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 flex-shrink-0">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleOpenMaterialModal(item); }}
+                                className="p-1.5 hover:bg-white rounded-lg text-warmGray-500 hover:text-primary-500 transition-colors"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); deleteMaterial(item.id); }}
+                                className="p-1.5 hover:bg-white rounded-lg text-warmGray-500 hover:text-danger-500 transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -759,6 +928,43 @@ export default function ReimbursementPage() {
                           </div>
                         </div>
                       )}
+
+                      <div className="p-4 bg-primary-50 border border-primary-200 rounded-xl">
+                        <div className="flex items-start justify-between mb-3">
+                          <h4 className="font-medium text-primary-700 flex items-center gap-2">
+                            <Download className="w-4 h-4" />
+                            整理摘要
+                          </h4>
+                          <Button 
+                            size="sm" 
+                            variant="primary" 
+                            onClick={() => handleExportSummary(application.id)}
+                          >
+                            <Download className="w-4 h-4" />
+                            导出清单
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div>
+                            <p className="text-xs text-primary-600 mb-1">已归入金额</p>
+                            <p className="font-mono font-semibold text-primary-800">{formatMoney(detail.totalIncludedAmount)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-primary-600 mb-1">预计可报金额</p>
+                            <p className="font-mono font-semibold text-green-600">{formatMoney(detail.totalIncludedAmount)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-primary-600 mb-1">材料缺口</p>
+                            <p className={`font-semibold ${detail.missingRequired.length > 0 ? 'text-accent-600' : 'text-green-600'}`}>
+                              {detail.missingRequired.length > 0 ? `缺 ${detail.missingRequired.length} 份` : '已齐全'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-primary-600 mb-1">完成进度</p>
+                            <p className="font-semibold text-primary-800">{detail.progress.toFixed(0)}%</p>
+                          </div>
+                        </div>
+                      </div>
                     </CardContent>
                   )}
                 </Card>
@@ -922,6 +1128,64 @@ export default function ReimbursementPage() {
             placeholder="报销相关备注信息..."
             rows={3}
           />
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={materialModalOpen}
+        onClose={() => setMaterialModalOpen(false)}
+        title={editingMaterial ? '编辑材料' : '添加材料'}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setMaterialModalOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={handleSubmitMaterial} disabled={!materialForm.name.trim()}>
+              {editingMaterial ? '保存修改' : '添加材料'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Input
+            label="材料名称"
+            value={materialForm.name}
+            onChange={(e) => setMaterialForm({ ...materialForm, name: e.target.value })}
+            placeholder="如：身份证复印件、病历本等"
+          />
+          <Select
+            label="材料分类"
+            value={materialForm.category}
+            onChange={(e) => setMaterialForm({ ...materialForm, category: e.target.value as MaterialCategory })}
+            options={MATERIAL_CATEGORIES.map(c => ({ value: c, label: c }))}
+          />
+          <TextArea
+            label="材料说明"
+            value={materialForm.description}
+            onChange={(e) => setMaterialForm({ ...materialForm, description: e.target.value })}
+            placeholder="材料用途、注意事项等..."
+            rows={2}
+          />
+          <div className="flex gap-6">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={materialForm.required}
+                onChange={(e) => setMaterialForm({ ...materialForm, required: e.target.checked })}
+                className="w-4 h-4 text-primary-500 rounded"
+              />
+              <span className="text-warmGray-700">必需材料</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={materialForm.isCompleted}
+                onChange={(e) => setMaterialForm({ ...materialForm, isCompleted: e.target.checked })}
+                className="w-4 h-4 text-primary-500 rounded"
+              />
+              <span className="text-warmGray-700">已准备好</span>
+            </label>
+          </div>
         </div>
       </Modal>
 

@@ -4,10 +4,11 @@ import { cn } from '@/lib/utils';
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
+  hint?: string;
 }
 
 const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, className, id, ...props }, ref) => {
+  ({ label, error, hint, className, id, ...props }, ref) => {
     const inputId = id || Math.random().toString(36).substr(2, 9);
     
     return (
@@ -28,6 +29,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
           {...props}
         />
         {error && <p className="mt-1 text-sm text-danger-500">{error}</p>}
+        {hint && !error && <p className="mt-1 text-xs text-warmGray-400">{hint}</p>}
       </div>
     );
   }

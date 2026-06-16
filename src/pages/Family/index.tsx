@@ -69,9 +69,11 @@ export default function FamilyPage() {
   const [stressModalOpen, setStressModalOpen] = useState(false);
   const [dateModalOpen, setDateModalOpen] = useState(false);
   const [dutyModalOpen, setDutyModalOpen] = useState(false);
+  const [generateDutyModalOpen, setGenerateDutyModalOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<string | null>(null);
   const [editingDuty, setEditingDuty] = useState<string | null>(null);
+  const [selectedTreatmentDate, setSelectedTreatmentDate] = useState<typeof upcomingDates[0] | null>(null);
   
   const [dutyForm, setDutyForm] = useState({
     memberId: '',
@@ -108,6 +110,13 @@ export default function FamilyPage() {
     date: new Date().toISOString().split('T')[0],
     description: '',
     isImportant: true,
+  });
+  
+  const [generateDutyForm, setGenerateDutyForm] = useState({
+    daysBefore: 1,
+    daysAfter: 1,
+    memberId: '',
+    role: '主要陪护' as DutyRole,
   });
 
   const stats = useMemo(() => getStats(), [members, tasks, stressNotes, importantDates]);
@@ -253,6 +262,62 @@ export default function FamilyPage() {
       description: '',
       isImportant: true,
     });
+  };
+
+  const getRecommendedDays = (treatmentType: string) => {
+    switch (treatmentType) {
+      case '取卵':
+        return { daysBefore: 1, daysAfter: 2 };
+      case '移植':
+        return { daysBefore: 1, daysAfter: 2 };
+      case '复查':
+        return { daysBefore: 0, daysAfter: 0 };
+      case '检查':
+        return { daysBefore: 0, daysAfter: 0 };
+      default:
+        return { daysBefore: 0, daysAfter: 0 };
+    }
+  };
+
+  const handleOpenGenerateDutyModal = (date: typeof upcomingDates[0]) => {
+    const recommended = getRecommendedDays(date.title);
+    setSelectedTreatmentDate(date);
+    setGenerateDutyForm({
+      daysBefore: recommended.daysBefore,
+      daysAfter: recommended.daysAfter,
+      memberId: members.length > 0 ? members[0].id : '',
+      role: '主要陪护',
+    });
+    setGenerateDutyModalOpen(true);
+  };
+
+  const handleGenerateDuties = () => {
+    if (!selectedTreatmentDate || !generateDutyForm.memberId) return;
+    
+    const treatmentDate = new Date(selectedTreatmentDate.date);
+    const { daysBefore, daysAfter, memberId, role } = generateDutyForm;
+    
+    for (let i = -daysBefore; i <= daysAfter; i++) {
+      const date = new Date(treatmentDate);
+      date.setDate(date.getDate() + i);
+      const dateStr = date.toISOString().split('T')[0];
+      
+      const notes = i === 0 
+        ? `${selectedTreatmentDate.title}当天` 
+        : i < 0 
+          ? `${selectedTreatmentDate.title}前${Math.abs(i)}天` 
+          : `${selectedTreatmentDate.title}后${i}天`;
+      
+      addDuty({
+        memberId,
+        date: dateStr,
+        role,
+        notes: `${selectedTreatmentDate.title}陪护 · ${notes}`,
+      });
+    }
+    
+    setGenerateDutyModalOpen(false);
+    setSelectedTreatmentDate(null);
   };
 
   const handleOpenDutyModal = (duty?: typeof dutyRoster[0], dateStr?: string, memberId?: string) => {
@@ -710,6 +775,14 @@ export default function FamilyPage() {
                         <Badge variant={days <= 3 ? 'danger' : days <= 7 ? 'warning' : 'default'}>
                           {days === 0 ? '今天' : days === 1 ? '明天' : `${days}天后`}
                         </Badge>
+                        {date.type === 'treatment' && (
+                          <button
+                            onClick={() => handleOpenGenerateDutyModal(date)}
+                            className="block mt-2 px-3 py-1.5 bg-primary-500 text-white text-xs rounded-lg hover:bg-primary-600 transition-colors ml-auto"
+                          >
+                            一键生成陪护
+                          </button>
+                        )}
                         {date.type !== 'treatment' && (
                           <button
                             onClick={() => deleteImportantDate(date.id)}
@@ -996,6 +1069,105 @@ export default function FamilyPage() {
             rows={2}
           />
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={generateDutyModalOpen}
+        onClose={() => setGenerateDutyModalOpen(false)}
+        title={selectedTreatmentDate ? `生成${selectedTreatmentDate.title}陪护安排` : '生成陪护安排'}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setGenerateDutyModalOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={handleGenerateDuties} disabled={!generateDutyForm.memberId}>
+              生成陪护草稿
+            </Button>
+          </>
+        }
+      >
+        {selectedTreatmentDate && (
+          <div className="space-y-4">
+            <div className="p-4 bg-primary-50 border border-primary-200 rounded-xl">
+              <p className="text-sm text-primary-700 font-medium">{selectedTreatmentDate.title}</p>
+              <p className="text-sm text-primary-600">{formatDisplayDate(selectedTreatmentDate.date)}</p>
+              {selectedTreatmentDate.description && (
+                <p className="text-xs text-primary-500 mt-1">{selectedTreatmentDate.description}</p>
+              )}
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="提前天数"
+                type="number"
+                min="0"
+                max="7"
+                value={generateDutyForm.daysBefore.toString()}
+                onChange={(e) => setGenerateDutyForm({ 
+                  ...generateDutyForm, 
+                  daysBefore: Math.max(0, Math.min(7, parseInt(e.target.value) || 0)) 
+                })}
+                hint="治疗前需要陪护的天数"
+              />
+              <Input
+                label="后续天数"
+                type="number"
+                min="0"
+                max="14"
+                value={generateDutyForm.daysAfter.toString()}
+                onChange={(e) => setGenerateDutyForm({ 
+                  ...generateDutyForm, 
+                  daysAfter: Math.max(0, Math.min(14, parseInt(e.target.value) || 0)) 
+                })}
+                hint="治疗后需要陪护的天数"
+              />
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <Select
+                label="陪护成员"
+                value={generateDutyForm.memberId}
+                onChange={(e) => setGenerateDutyForm({ ...generateDutyForm, memberId: e.target.value })}
+                options={members.map(m => ({ value: m.id, label: `${m.avatar} ${m.name}` }))}
+              />
+              <Select
+                label="值班角色"
+                value={generateDutyForm.role}
+                onChange={(e) => setGenerateDutyForm({ ...generateDutyForm, role: e.target.value as DutyRole })}
+                options={[
+                  { value: '主要陪护', label: '主要陪护' },
+                  { value: '陪同就诊', label: '陪同就诊' },
+                  { value: '后勤支持', label: '后勤支持' },
+                  { value: '心理支持', label: '心理支持' },
+                  { value: '工作对接', label: '工作对接' },
+                  { value: '其他', label: '其他' },
+                ]}
+              />
+            </div>
+            
+            <div className="p-3 bg-warmGray-50 rounded-lg">
+              <p className="text-sm text-warmGray-600">
+                将为以下日期生成陪护草稿：
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(() => {
+                  const dates = [];
+                  const treatmentDate = new Date(selectedTreatmentDate.date);
+                  for (let i = -generateDutyForm.daysBefore; i <= generateDutyForm.daysAfter; i++) {
+                    const d = new Date(treatmentDate);
+                    d.setDate(d.getDate() + i);
+                    dates.push(d);
+                  }
+                  return dates.map((d, idx) => (
+                    <Badge key={idx} variant="default">
+                      {formatDate(d, 'M月d日')}
+                    </Badge>
+                  ));
+                })()}
+              </div>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );
